@@ -35,6 +35,11 @@ struct dot_t {
 
 typedef struct dot_t dot_t;
 
+typedef enum {
+  true = 1,
+  false = 0
+} bool;
+
 void SPI_init();
 void SPI_write(const uint8_t);
 uint8_t SPI_read();
@@ -55,34 +60,33 @@ uint8_t dy = 0;
 uint8_t direction = DOWN;
 
 uint8_t key;
+bool disable_key = false;
 
 ISR(USART_RX_vect) {
   key = UDR0;
+  disable_key = false;
   switch (key) {
-  case RIGHT:
-    if (direction != LEFT) {
-      direction = key;
-    }
-    break;
-  case LEFT:
-    if (direction != RIGHT) {
-      direction = key;
-    }
-    break;
-  case UP:
-    if (direction != DOWN) {
-      direction = key;
-    }
-    break;
-  case DOWN:
-    if (direction != UP) {
-      direction = key;
-    }
-    break;
-
-  default:
-    break;
+    case RIGHT:
+      if (direction == LEFT)
+        disable_key = true;
+      break;
+    case LEFT:
+      if (direction == RIGHT)
+        disable_key = true;
+      break;
+    case UP:
+      if (direction == DOWN)
+        disable_key = true;
+      break;
+    case DOWN:
+      if (direction == UP)
+        disable_key = true;
+      break;
+    default:
+      break;
   }
+  if (!disable_key)
+    direction = key;
 }
 
 int main() {
@@ -92,7 +96,7 @@ int main() {
   max7219(Shutdown, 0);
   max7219(Test, 0);
   max7219(Decode, 0);
-  max7219(Intensity, 0x3);
+  max7219(Intensity, 0xF);
   max7219(Scan, 7);
   max7219(Shutdown, 1);
 
@@ -185,27 +189,25 @@ GEN:
 
 void move() {
   switch (direction) {
-  case RIGHT:
-    dx = 0;
-    dy = 7;
-    break;
-  case LEFT:
-    dx = 0;
-    dy = 1;
-    break;
-  case UP:
-    dx = 7;
-    dy = 0;
-    break;
-  case DOWN:
-    dx = 1;
-    dy = 0;
-    break;
-  default:
-    break;
+    case RIGHT:
+      dx = 0;
+      dy = 7;
+      break;
+    case LEFT:
+      dx = 0;
+      dy = 1;
+      break;
+    case UP:
+      dx = 7;
+      dy = 0;
+      break;
+    case DOWN:
+      dx = 1;
+      dy = 0;
+      break;
+    default:
+      break;
   }
-
-  direction = NONE;
 
   dot_t *self = ptr;
   while (self != 0) {
