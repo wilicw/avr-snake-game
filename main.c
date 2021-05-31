@@ -30,15 +30,12 @@
 struct dot_t {
   uint8_t x;
   uint8_t y;
-  struct dot_t *pre;
+  struct dot_t *next;
 };
 
 typedef struct dot_t dot_t;
 
-typedef enum {
-  true = 1,
-  false = 0
-} bool;
+typedef enum { true = 1, false = 0 } bool;
 
 void SPI_init();
 void SPI_write(const uint8_t);
@@ -48,11 +45,14 @@ void display();
 void move();
 void generate_food();
 void USART_init();
+void ADC_init();
+uint8_t ADC_read();
+dot_t *make_dot();
 void game_over();
 
-dot_t head, body, tail;
+dot_t snake;
 dot_t food;
-dot_t *ptr = &tail;
+dot_t *ptr = &snake;
 
 uint8_t dx = 1;
 uint8_t dy = 0;
@@ -66,24 +66,24 @@ ISR(USART_RX_vect) {
   key = UDR0;
   disable_key = false;
   switch (key) {
-    case RIGHT:
-      if (direction == LEFT)
-        disable_key = true;
-      break;
-    case LEFT:
-      if (direction == RIGHT)
-        disable_key = true;
-      break;
-    case UP:
-      if (direction == DOWN)
-        disable_key = true;
-      break;
-    case DOWN:
-      if (direction == UP)
-        disable_key = true;
-      break;
-    default:
-      break;
+  case RIGHT:
+    if (direction == LEFT)
+      disable_key = true;
+    break;
+  case LEFT:
+    if (direction == RIGHT)
+      disable_key = true;
+    break;
+  case UP:
+    if (direction == DOWN)
+      disable_key = true;
+    break;
+  case DOWN:
+    if (direction == UP)
+      disable_key = true;
+    break;
+  default:
+    break;
   }
   if (!disable_key)
     direction = key;
@@ -92,7 +92,7 @@ ISR(USART_RX_vect) {
 int main() {
   SPI_init();
   USART_init();
-  _delay_ms(1000);
+  _delay_ms(100);
   max7219(Shutdown, 0);
   max7219(Test, 0);
   max7219(Decode, 0);
@@ -100,13 +100,19 @@ int main() {
   max7219(Scan, 7);
   max7219(Shutdown, 1);
 
-  for (uint8_t i = 0; i < 35; i++) {
-    generate_food();
+  ADC_init();
+  srandom(ADC_read());
+
+  dot_t *self = ptr;
+  snake.x = 1, snake.y = 1;
+  for (uint8_t i = 0; i < 3; i++) {
+    dot_t *node = make_dot();
+    self->next = node;
+    node->x = 1, node->y = i + 2, node->next = 0;
+    self = node;
   }
 
-  tail.x = 1, tail.y = 2, tail.pre = &body;
-  body.x = 1, body.y = 1, body.pre = &head;
-  head.x = 1, head.y = 0, head.pre = 0;
+  generate_food();
 
   max7219(Test, 1);
   _delay_ms(1000);
@@ -118,7 +124,7 @@ int main() {
   for (;;) {
     move();
     display();
-    _delay_ms(350);
+    _delay_ms(200);
   }
 
   return 0;
@@ -167,7 +173,7 @@ void display() {
       if (self->x == i) {
         LED |= _BV(self->y);
       }
-      self = self->pre;
+      self = self->next;
     }
     max7219(i + 1, LED);
   }
@@ -176,68 +182,67 @@ void display() {
 void generate_food() {
   dot_t *self = ptr;
 GEN:
-  food.x = rand() % 8;
-  food.y = rand() % 8;
+  food.x = random() % 8;
+  food.y = random() % 8;
 
   while (self != 0) {
     if (food.x == self->x && food.y == self->y) {
       goto GEN;
     }
-    self = self->pre;
+    self = self->next;
   }
 }
 
 void move() {
   switch (direction) {
-    case RIGHT:
-      dx = 0;
-      dy = 7;
-      break;
-    case LEFT:
-      dx = 0;
-      dy = 1;
-      break;
-    case UP:
-      dx = 7;
-      dy = 0;
-      break;
-    case DOWN:
-      dx = 1;
-      dy = 0;
-      break;
-    default:
-      break;
+  case RIGHT:
+    dx = 0;
+    dy = 7;
+    break;
+  case LEFT:
+    dx = 0;
+    dy = 1;
+    break;
+  case UP:
+    dx = 7;
+    dy = 0;
+    break;
+  case DOWN:
+    dx = 1;
+    dy = 0;
+    break;
+  default:
+    break;
   }
 
   dot_t *self = ptr;
+
+  uint8_t next_x, next_y, last_x, last_y;
+  next_x = self->x + dx;
+  next_y = self->y + dy;
+
+  if (next_x >= 8)
+    next_x -= 8;
+
+  if (next_y >= 8)
+    next_y -= 8;
+
+  if (next_x == food.x && next_y == food.y) {
+    dot_t *node = make_dot();
+    node->x = food.x, node->y = food.y, node->next = self;
+    ptr = node;
+    generate_food();
+    return;
+  }
+
   while (self != 0) {
-    if (self->pre == 0) {
-      uint8_t next_x, next_y;
-      next_x = self->x + dx;
-      next_y = self->y + dy;
-
-      if (next_x >= 8) {
-        next_x -= 8;
-      }
-      if (next_y >= 8) {
-        next_y -= 8;
-      }
-
-      if (next_x == food.x && next_y == food.y) {
-        dot_t *node = malloc(sizeof(dot_t));
-        node->x = food.x, node->y = food.y, node->pre = 0;
-        self->pre = node;
-        generate_food();
-      }
-
-      self->x = next_x;
-      self->y = next_y;
-
-    } else {
-      self->x = self->pre->x;
-      self->y = self->pre->y;
-    }
-    self = self->pre;
+    last_x = self->x;
+    last_y = self->y;
+    self->x = next_x;
+    self->y = next_y;
+    next_x = last_x;
+    next_y = last_y;
+    self = self->next;
   }
 }
 
@@ -248,7 +253,22 @@ void USART_init() {
   UCSR0C = (0 << UMSEL00) | (0 << USBS0) | (3 << UCSZ00);
 }
 
+void ADC_init() {
+  ADMUX = (1 << REFS0);
+  ADCSRA = (1 << ADEN) | (1 << ADPS0) | (1 << ADPS1) | (1 << ADPS2);
+}
+
+uint8_t ADC_read() {
+  ADCSRA |= (1 << ADSC);
+  while (ADCSRA & (1 << ADSC))
+    ;
+  return ADCL;
+}
+
 void game_over() {
+  max7219(Shutdown, 0);
   for (;;) {
   }
 }
+
+dot_t *make_dot() { return malloc(sizeof(dot_t)); }
