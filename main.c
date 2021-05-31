@@ -94,6 +94,7 @@ ISR(USART_RX_vect) {
 ISR(TIMER1_OVF_vect) {
   move();
   display();
+  wdt_reset();
   TCNT1 = COUNTER;
 }
 
@@ -129,7 +130,6 @@ int main() {
   sei();
 
   for (;;) {
-    wdt_reset();
   }
 
   return 0;
