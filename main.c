@@ -1,7 +1,7 @@
 #define F_CPU 16000000UL
 #include <avr/interrupt.h>
 #include <avr/io.h>
-#include <util/delay.h>
+#include <avr/wdt.h>
 
 #define SPIPORT PORTB
 #define SPIPIN PINB
@@ -40,31 +40,29 @@ typedef struct dot_t dot_t;
 
 typedef enum { true = 1, false = 0 } bool;
 
-void SPI_init();
-void SPI_write(const uint8_t);
-uint8_t SPI_read();
-void max7219(const uint8_t, const uint8_t);
-void display();
-void move();
-void generate_food();
-void USART_init();
-void ADC_init();
-uint8_t ADC_read();
-dot_t *make_dot();
-void game_over();
-void timer_init();
+inline void SPI_init();
+inline void SPI_write(const uint8_t);
+inline uint8_t SPI_read();
+inline void max7219(const uint8_t, const uint8_t);
+inline void display();
+inline void move();
+inline void generate_food();
+inline void USART_init();
+inline void ADC_init();
+inline uint8_t ADC_read();
+inline dot_t *make_dot();
+inline void game_over();
+inline void timer_init();
 
 dot_t snake;
 dot_t food;
 dot_t *ptr = &snake;
 
-uint8_t dx = 1;
-uint8_t dy = 0;
-
-uint8_t direction = DOWN;
-
-uint8_t key;
-bool disable_key = false;
+volatile uint8_t dx = 1;
+volatile uint8_t dy = 0;
+volatile uint8_t direction = DOWN;
+volatile uint8_t key;
+volatile bool disable_key = false;
 
 ISR(USART_RX_vect) {
   key = UDR0;
@@ -100,9 +98,11 @@ ISR(TIMER1_OVF_vect) {
 }
 
 int main() {
+  wdt_enable(WDTO_2S);
+
   SPI_init();
   USART_init();
-  _delay_ms(100);
+
   max7219(Shutdown, 0);
   max7219(Test, 0);
   max7219(Decode, 0);
@@ -124,16 +124,12 @@ int main() {
 
   generate_food();
 
-  max7219(Test, 1);
-  _delay_ms(1000);
-  max7219(Test, 0);
-  _delay_ms(1000);
-
   timer_init();
 
   sei();
 
   for (;;) {
+    wdt_reset();
   }
 
   return 0;
@@ -226,7 +222,7 @@ void move() {
 
   dot_t *self = ptr;
 
-  uint8_t next_x, next_y, last_x, last_y;
+  uint8_t next_x, next_y, last_x, last_y, head_x, head_y;
   next_x = self->x + dx;
   next_y = self->y + dy;
 
@@ -235,6 +231,8 @@ void move() {
 
   if (next_y >= 8)
     next_y -= 8;
+
+  head_x = next_x, head_y = next_y;
 
   if (next_x == food.x && next_y == food.y) {
     dot_t *node = make_dot();
@@ -251,6 +249,10 @@ void move() {
     self->y = next_y;
     next_x = last_x;
     next_y = last_y;
+    if (head_x == next_x && head_y == next_y) {
+      display();
+      game_over();
+    }
     self = self->next;
   }
 }
