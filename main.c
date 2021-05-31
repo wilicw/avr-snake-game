@@ -27,6 +27,9 @@
 #define USART_BAUDRATE 9600
 #define BAUD_PRESCALER (((F_CPU / (USART_BAUDRATE * 16UL))) - 1)
 
+#define SPEED_DEALY 200
+#define COUNTER (65535 - ((F_CPU / 1024) / (1000 / SPEED_DEALY)))
+
 struct dot_t {
   uint8_t x;
   uint8_t y;
@@ -49,6 +52,7 @@ void ADC_init();
 uint8_t ADC_read();
 dot_t *make_dot();
 void game_over();
+void timer_init();
 
 dot_t snake;
 dot_t food;
@@ -89,6 +93,12 @@ ISR(USART_RX_vect) {
     direction = key;
 }
 
+ISR(TIMER1_OVF_vect) {
+  move();
+  display();
+  TCNT1 = COUNTER;
+}
+
 int main() {
   SPI_init();
   USART_init();
@@ -119,12 +129,11 @@ int main() {
   max7219(Test, 0);
   _delay_ms(1000);
 
+  timer_init();
+
   sei();
 
   for (;;) {
-    move();
-    display();
-    _delay_ms(200);
   }
 
   return 0;
@@ -272,3 +281,10 @@ void game_over() {
 }
 
 dot_t *make_dot() { return malloc(sizeof(dot_t)); }
+
+void timer_init() {
+  TCNT1 = COUNTER;
+  TCCR1A = 0x00;
+  TCCR1B = (1 << CS10) | (1 << CS12);
+  TIMSK1 = (1 << TOIE1);
+}
